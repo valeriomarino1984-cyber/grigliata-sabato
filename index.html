@@ -16,6 +16,18 @@
     ::-webkit-scrollbar { width: 6px; }
     ::-webkit-scrollbar-track { background: #1a0a00; }
     ::-webkit-scrollbar-thumb { background: #ff6b3566; border-radius: 3px; }
+    .qty-input {
+      background: rgba(0,0,0,.4);
+      border: 1px solid #444;
+      border-radius: 6px;
+      padding: 3px 7px;
+      color: #ffb87a;
+      font-size: 12px;
+      width: 80px;
+      text-align: center;
+      font-family: Georgia, serif;
+    }
+    .qty-input:focus { border-color: #ff6b35; outline: none; }
   </style>
 </head>
 <body>
@@ -24,63 +36,57 @@
 <script type="text/babel">
 const { useState, useEffect, useCallback } = React;
 
-const STORAGE_KEY = "grigliata_sabato_v1";
-
-// Usa Firebase Realtime Database (gratuito) come backend condiviso
-// IMPORTANTE: sostituisci DB_URL con il tuo Firebase project URL se vuoi persistenza vera
-// Per ora usiamo localStorage + un semplice sync via BroadcastChannel (stesso browser)
-// Per sync multi-dispositivo reale, vedi istruzioni sotto
+const STORAGE_KEY = "grigliata_sabato_v2";
 
 const CATEGORIE_DEFAULT = [
   {
     id: "carne", emoji: "🥩", nome: "Carne", colore: "#c0392b",
     items: [
-      { id: "s1", testo: "Salsicce", chi: "", fatto: false },
-      { id: "s2", testo: "Costine di maiale", chi: "", fatto: false },
-      { id: "s3", testo: "Pollo (ali/cosce)", chi: "", fatto: false },
-      { id: "s4", testo: "Hamburger", chi: "", fatto: false },
+      { id: "s1", testo: "Salsicce", qty: "1 kg", chi: "", fatto: false },
+      { id: "s2", testo: "Costine di maiale", qty: "1 kg", chi: "", fatto: false },
+      { id: "s3", testo: "Pollo (ali/cosce)", qty: "1 kg", chi: "", fatto: false },
+      { id: "s4", testo: "Hamburger", qty: "8 pz", chi: "", fatto: false },
+      { id: "s5", testo: "Arrosticini", qty: "50 pz", chi: "", fatto: false },
     ]
   },
   {
     id: "contorni", emoji: "🥗", nome: "Contorni & Antipasti", colore: "#27ae60",
     items: [
-      { id: "c1", testo: "Pane / bruschette", chi: "", fatto: false },
-      { id: "c2", testo: "Zucchine e peperoni", chi: "", fatto: false },
-      { id: "c3", testo: "Insalata", chi: "", fatto: false },
-      { id: "c4", testo: "Affettati / formaggi", chi: "", fatto: false },
+      { id: "c1", testo: "Pane / bruschette", qty: "2 filoni", chi: "", fatto: false },
+      { id: "c2", testo: "Zucchine e peperoni", qty: "1 kg", chi: "", fatto: false },
+      { id: "c3", testo: "Insalata", qty: "2 cespi", chi: "", fatto: false },
+      { id: "c4", testo: "Affettati / formaggi", qty: "500 g", chi: "", fatto: false },
     ]
   },
   {
     id: "bevande", emoji: "🍺", nome: "Bevande", colore: "#f39c12",
     items: [
-      { id: "b1", testo: "Birra", chi: "", fatto: false },
-      { id: "b2", testo: "Vino", chi: "", fatto: false },
-      { id: "b3", testo: "Acqua naturale e frizzante", chi: "", fatto: false },
-      { id: "b4", testo: "Bibite analcoliche", chi: "", fatto: false },
+      { id: "b1", testo: "Birra", qty: "2 conf.", chi: "", fatto: false },
+      { id: "b2", testo: "Vino", qty: "2 bottiglie", chi: "", fatto: false },
+      { id: "b3", testo: "Acqua nat. e frizzante", qty: "6 bottiglie", chi: "", fatto: false },
+      { id: "b4", testo: "Bibite analcoliche", qty: "1 conf.", chi: "", fatto: false },
     ]
   },
   {
     id: "accessori", emoji: "🧻", nome: "Accessori", colore: "#8e44ad",
     items: [
-      { id: "a1", testo: "Carbonella / bricchetti", chi: "", fatto: false },
-      { id: "a2", testo: "Accendifuoco", chi: "", fatto: false },
-      { id: "a3", testo: "Piatti e bicchieri di carta", chi: "", fatto: false },
-      { id: "a4", testo: "Posate usa e getta", chi: "", fatto: false },
-      { id: "a5", testo: "Sacchi spazzatura", chi: "", fatto: false },
+      { id: "a1", testo: "Carbonella / bricchetti", qty: "3 kg", chi: "", fatto: false },
+      { id: "a2", testo: "Accendifuoco", qty: "1 pz", chi: "", fatto: false },
+      { id: "a3", testo: "Piatti e bicchieri carta", qty: "20 pz", chi: "", fatto: false },
+      { id: "a4", testo: "Posate usa e getta", qty: "20 set", chi: "", fatto: false },
+      { id: "a5", testo: "Sacchi spazzatura", qty: "5 pz", chi: "", fatto: false },
     ]
   },
   {
     id: "dolce", emoji: "🍦", nome: "Dolce", colore: "#e91e8c",
     items: [
-      { id: "d1", testo: "Gelato / anguria", chi: "", fatto: false },
+      { id: "d1", testo: "Gelato / anguria", qty: "q.b.", chi: "", fatto: false },
     ]
   },
 ];
 
-// ── BACKEND: JSONBin.io (gratuito, nessun account richiesto per read)
-// Crea un bin su jsonbin.io e incolla l'ID qui sotto
-const JSONBIN_ID = ""; // es: "665abc123def456"
-const JSONBIN_KEY = ""; // la tua API key di jsonbin.io
+const JSONBIN_ID = "";
+const JSONBIN_KEY = "";
 
 async function remoteLoad() {
   if (!JSONBIN_ID) return null;
@@ -111,13 +117,13 @@ function App() {
   const [nome, setNome] = useState(() => localStorage.getItem("grigliata_nome") || "");
   const [nomeTemp, setNomeTemp] = useState("");
   const [nomeConfermato, setNomeConfermato] = useState(() => !!localStorage.getItem("grigliata_nome"));
-  const [nuoveVoci, setNuoveVoci] = useState({});
+  const [nuovaVoce, setNuovaVoce] = useState({});
+  const [nuovaQty, setNuovaQty] = useState({});
   const [loading, setLoading] = useState(true);
   const [lastSync, setLastSync] = useState(null);
 
   useEffect(() => {
     async function init() {
-      // Prima prova remote, poi localStorage
       let data = await remoteLoad();
       if (!data) {
         const local = localStorage.getItem(STORAGE_KEY);
@@ -127,8 +133,6 @@ function App() {
       setLoading(false);
     }
     init();
-
-    // Polling ogni 15s per aggiornamenti da altri utenti
     const interval = setInterval(async () => {
       const data = await remoteLoad();
       if (data) {
@@ -136,7 +140,6 @@ function App() {
         setLastSync(new Date().toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" }));
       }
     }, 15000);
-
     return () => clearInterval(interval);
   }, []);
 
@@ -145,7 +148,7 @@ function App() {
     await remoteSave(nuove);
   }, []);
 
-  async function aggiornaItem(catId, itemId, campo, valore) {
+  function aggiornaItem(catId, itemId, campo, valore) {
     setCategorie(prev => {
       const nuove = prev.map(cat =>
         cat.id !== catId ? cat : {
@@ -160,39 +163,40 @@ function App() {
     });
   }
 
-  async function claimaItem(catId, itemId) {
+  function claimaItem(catId, itemId) {
     if (!nomeConfermato) { alert("Prima inserisci il tuo nome!"); return; }
     const cat = categorie.find(c => c.id === catId);
     const item = cat?.items.find(i => i.id === itemId);
     if (!item) return;
-    const nuovoChi = item.chi === nome ? "" : nome;
-    await aggiornaItem(catId, itemId, "chi", nuovoChi);
+    aggiornaItem(catId, itemId, "chi", item.chi === nome ? "" : nome);
   }
 
-  async function toggleFatto(catId, itemId) {
+  function toggleFatto(catId, itemId) {
     const cat = categorie.find(c => c.id === catId);
     const item = cat?.items.find(i => i.id === itemId);
     if (!item) return;
-    await aggiornaItem(catId, itemId, "fatto", !item.fatto);
+    aggiornaItem(catId, itemId, "fatto", !item.fatto);
   }
 
-  async function aggiungiVoce(catId) {
-    const testo = (nuoveVoci[catId] || "").trim();
+  function aggiungiVoce(catId) {
+    const testo = (nuovaVoce[catId] || "").trim();
     if (!testo) return;
+    const qty = (nuovaQty[catId] || "").trim() || "—";
     setCategorie(prev => {
       const nuove = prev.map(cat =>
         cat.id !== catId ? cat : {
           ...cat,
-          items: [...cat.items, { id: genId(), testo, chi: "", fatto: false }]
+          items: [...cat.items, { id: genId(), testo, qty, chi: "", fatto: false }]
         }
       );
       salva(nuove);
       return nuove;
     });
-    setNuoveVoci(v => ({ ...v, [catId]: "" }));
+    setNuovaVoce(v => ({ ...v, [catId]: "" }));
+    setNuovaQty(v => ({ ...v, [catId]: "" }));
   }
 
-  async function eliminaVoce(catId, itemId) {
+  function eliminaVoce(catId, itemId) {
     setCategorie(prev => {
       const nuove = prev.map(cat =>
         cat.id !== catId ? cat : { ...cat, items: cat.items.filter(i => i.id !== itemId) }
@@ -213,7 +217,7 @@ function App() {
   if (loading) return (
     <div style={{ minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center",
       background:"#1a0a00", color:"#fff", fontSize:20 }}>
-      🔥 Caricamento lista...
+      🍖 Caricamento lista...
     </div>
   );
 
@@ -246,13 +250,10 @@ function App() {
             background:"linear-gradient(90deg,#ff6b35,#ffd54f)", height:"100%",
             borderRadius:99, transition:"width .4s" }} />
         </div>
-
-        {lastSync && (
-          <p style={{ color:"#555", fontSize:11, marginTop:8 }}>↻ Aggiornato alle {lastSync}</p>
-        )}
+        {lastSync && <p style={{ color:"#555", fontSize:11, marginTop:8 }}>↻ Aggiornato alle {lastSync}</p>}
       </div>
 
-      <div style={{ maxWidth:640, margin:"0 auto", padding:"0 14px" }}>
+      <div style={{ maxWidth:680, margin:"0 auto", padding:"0 14px" }}>
 
         {/* NOME */}
         {!nomeConfermato ? (
@@ -277,8 +278,7 @@ function App() {
             gap:8, margin:"16px 0 4px", color:"#ffb87a", fontSize:14 }}>
             👤 Stai partecipando come <strong style={{ color:"#ff6b35" }}>{nome}</strong>
             <button onClick={() => { setNomeConfermato(false); setNomeTemp(nome); }}
-              style={{ background:"none", border:"none", color:"#666",
-                cursor:"pointer", fontSize:12, textDecoration:"underline" }}>cambia</button>
+              style={{ background:"none", border:"none", color:"#666", cursor:"pointer", fontSize:12, textDecoration:"underline" }}>cambia</button>
           </div>
         )}
 
@@ -303,12 +303,23 @@ function App() {
               </span>
             </div>
 
-            <div style={{ padding:"6px 10px" }}>
+            {/* Intestazione colonne */}
+            <div style={{ display:"flex", alignItems:"center", gap:8, padding:"6px 16px 2px",
+              borderBottom:"1px solid rgba(255,255,255,.04)" }}>
+              <div style={{ width:26, flexShrink:0 }} />
+              <span style={{ flex:1, fontSize:10, color:"#555", textTransform:"uppercase", letterSpacing:1 }}>Voce</span>
+              <span style={{ width:84, fontSize:10, color:"#555", textTransform:"uppercase", letterSpacing:1, textAlign:"center" }}>Quantità</span>
+              <span style={{ width:90, fontSize:10, color:"#555", textTransform:"uppercase", letterSpacing:1, textAlign:"center" }}>Chi</span>
+              <div style={{ width:16 }} />
+            </div>
+
+            <div style={{ padding:"4px 10px" }}>
               {cat.items.map(item => (
                 <div key={item.id} style={{ display:"flex", alignItems:"center", gap:8,
-                  padding:"10px 8px", borderBottom:"1px solid rgba(255,255,255,.04)",
+                  padding:"9px 6px", borderBottom:"1px solid rgba(255,255,255,.04)",
                   opacity: item.fatto ? .45 : 1, transition:"opacity .2s" }}>
 
+                  {/* Check */}
                   <button onClick={() => toggleFatto(cat.id, item.id)} style={{
                     width:26, height:26, borderRadius:6, flexShrink:0,
                     border:`2px solid ${item.fatto ? "#4caf50" : "#333"}`,
@@ -317,47 +328,64 @@ function App() {
                     cursor:"pointer", fontSize:14, display:"flex",
                     alignItems:"center", justifyContent:"center" }}>✓</button>
 
-                  <span style={{ flex:1, fontSize:15,
+                  {/* Nome voce */}
+                  <span style={{ flex:1, fontSize:14,
                     textDecoration: item.fatto ? "line-through" : "none",
                     color: item.fatto ? "#555" : "#f5e6c8" }}>{item.testo}</span>
 
-                  {item.chi && item.chi !== nome && (
-                    <span style={{ fontSize:11, background:`${cat.colore}33`,
-                      border:`1px solid ${cat.colore}55`, borderRadius:20,
-                      padding:"2px 10px", color:"#ffb87a", whiteSpace:"nowrap" }}>{item.chi}</span>
-                  )}
+                  {/* Quantità editabile */}
+                  <input
+                    className="qty-input"
+                    value={item.qty || ""}
+                    onChange={e => aggiornaItem(cat.id, item.id, "qty", e.target.value)}
+                    onBlur={e => aggiornaItem(cat.id, item.id, "qty", e.target.value)}
+                    style={{ width:84 }}
+                  />
 
-                  {nomeConfermato && (
+                  {/* Bottone claim */}
+                  {nomeConfermato ? (
                     <button onClick={() => claimaItem(cat.id, item.id)}
                       disabled={!!(item.chi && item.chi !== nome)}
                       style={{
-                        background: item.chi===nome ? "#ff6b3533" : "transparent",
+                        width:90, background: item.chi===nome ? "#ff6b3533" : "transparent",
                         border:`1px solid ${item.chi===nome ? "#ff6b35" : item.chi ? "#333" : "#ff6b3555"}`,
-                        borderRadius:20, padding:"4px 11px",
-                        color: item.chi===nome ? "#ff6b35" : item.chi ? "#444" : "#ff6b35aa",
+                        borderRadius:20, padding:"4px 6px",
+                        color: item.chi===nome ? "#ff6b35" : item.chi ? "#777" : "#ff6b35aa",
                         cursor: item.chi && item.chi!==nome ? "default" : "pointer",
-                        fontSize:12, whiteSpace:"nowrap" }}>
+                        fontSize:11, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
                       {item.chi===nome ? "✋ Io" : item.chi ? `✋ ${item.chi}` : "✋ Mi porto io"}
                     </button>
+                  ) : (
+                    <div style={{ width:90, fontSize:11, color:"#555", textAlign:"center" }}>
+                      {item.chi ? `✋ ${item.chi}` : "—"}
+                    </div>
                   )}
 
+                  {/* Elimina */}
                   <button onClick={() => eliminaVoce(cat.id, item.id)}
                     style={{ background:"none", border:"none", color:"#333",
-                      cursor:"pointer", fontSize:18, lineHeight:1, padding:"0 2px" }}>×</button>
+                      cursor:"pointer", fontSize:18, lineHeight:1, padding:"0 2px", flexShrink:0 }}>×</button>
                 </div>
               ))}
 
-              <div style={{ display:"flex", gap:6, padding:"10px 8px 6px" }}>
-                <input value={nuoveVoci[cat.id]||""} placeholder="Aggiungi voce..."
-                  onChange={e => setNuoveVoci(v=>({...v,[cat.id]:e.target.value}))}
+              {/* Aggiungi voce */}
+              <div style={{ display:"flex", gap:6, padding:"10px 6px 6px", flexWrap:"wrap" }}>
+                <input value={nuovaVoce[cat.id]||""} placeholder="Voce..."
+                  onChange={e => setNuovaVoce(v=>({...v,[cat.id]:e.target.value}))}
                   onKeyDown={e => e.key==="Enter" && aggiungiVoce(cat.id)}
-                  style={{ flex:1, background:"rgba(0,0,0,.3)",
+                  style={{ flex:2, minWidth:100, background:"rgba(0,0,0,.3)",
                     border:`1px solid ${cat.colore}44`, borderRadius:8,
-                    padding:"8px 12px", color:"#f5e6c8", fontSize:14 }} />
+                    padding:"8px 10px", color:"#f5e6c8", fontSize:13 }} />
+                <input value={nuovaQty[cat.id]||""} placeholder="Quantità..."
+                  onChange={e => setNuovaQty(v=>({...v,[cat.id]:e.target.value}))}
+                  onKeyDown={e => e.key==="Enter" && aggiungiVoce(cat.id)}
+                  style={{ flex:1, minWidth:80, background:"rgba(0,0,0,.3)",
+                    border:`1px solid ${cat.colore}44`, borderRadius:8,
+                    padding:"8px 10px", color:"#ffb87a", fontSize:13 }} />
                 <button onClick={() => aggiungiVoce(cat.id)}
                   style={{ background:`${cat.colore}44`, border:`1px solid ${cat.colore}`,
                     borderRadius:8, padding:"8px 14px", color:"#fff",
-                    cursor:"pointer", fontSize:18 }}>+</button>
+                    cursor:"pointer", fontSize:18, flexShrink:0 }}>+</button>
               </div>
             </div>
           </div>
