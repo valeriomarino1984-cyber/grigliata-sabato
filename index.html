@@ -359,16 +359,19 @@ function App() {
                     <button onClick={() => claimaItem(cat.id, item.id)}
                       disabled={!!(item.chi && item.chi !== nome)}
                       style={{
-                        width:90, background: item.chi===nome ? "#ff6b3533" : "transparent",
-                        border:`1px solid ${item.chi===nome ? "#ff6b35" : item.chi ? "#333" : "#ff6b3555"}`,
-                        borderRadius:20, padding:"4px 6px",
-                        color: item.chi===nome ? "#ff6b35" : item.chi ? "#777" : "#ff6b35aa",
+                        width:110, background: item.chi===nome ? "#ff6b3533" : item.chi ? "#ffffff11" : "transparent",
+                        border:`1px solid ${item.chi===nome ? "#ff6b35" : item.chi ? "#555" : "#ff6b3555"}`,
+                        borderRadius:20, padding:"4px 8px",
+                        color: item.chi===nome ? "#ff6b35" : item.chi ? "#ffb87a" : "#ff6b35aa",
                         cursor: item.chi && item.chi!==nome ? "default" : "pointer",
                         fontSize:11, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
-                      {item.chi===nome ? "✋ Io" : item.chi ? `✋ ${item.chi}` : "✋ Mi porto io"}
+                      {item.chi ? `✋ ${item.chi}` : "✋ Mi porto io"}
                     </button>
                   ) : (
-                    <div style={{ width:90, fontSize:11, color:"#555", textAlign:"center" }}>
+                    <div style={{ width:110, fontSize:11, color: item.chi ? "#ffb87a" : "#555", textAlign:"center",
+                      background: item.chi ? "#ffffff11" : "transparent",
+                      border: item.chi ? "1px solid #555" : "1px solid transparent",
+                      borderRadius:20, padding:"4px 8px", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
                       {item.chi ? `✋ ${item.chi}` : "—"}
                     </div>
                   )}
