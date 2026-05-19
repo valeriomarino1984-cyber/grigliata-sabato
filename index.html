@@ -84,7 +84,7 @@ const CATEGORIE_DEFAULT = [
     ]
   },
   {
-    id: "postcena", emoji: "🎉", nome: "Post cena ed ESCORT??", colore: "#1565c0",
+    id: "postcena", emoji: "🎉", nome: "Post cena", colore: "#1565c0",
     items: [
       { id: "p1", testo: "Ammazzacaffè", qty: "1 bottiglia", chi: "", fatto: false },
       { id: "p2", testo: "Sigari / sigaretti", qty: "q.b.", chi: "", fatto: false },
@@ -403,7 +403,26 @@ function App() {
           </div>
         ))}
 
-        <p style={{ textAlign:"center", color:"#333", fontSize:12, marginTop:20 }}>
+        <div style={{ textAlign:"center", marginTop:24, marginBottom:8 }}>
+          <button onClick={async () => {
+            localStorage.clear();
+            await salva(categorie);
+            location.reload();
+          }} style={{
+            background:"linear-gradient(135deg,#1a3a6b,#1565c0)",
+            border:"1px solid #42a5f5",
+            borderRadius:10, padding:"12px 28px",
+            color:"#e3f2fd", fontFamily:"Georgia,serif",
+            fontSize:14, cursor:"pointer", letterSpacing:1,
+            boxShadow:"0 2px 12px rgba(21,101,192,.4)"
+          }}>
+            🔄 Salva &amp; Aggiorna lista
+          </button>
+          <p style={{ color:"#444", fontSize:11, marginTop:8 }}>
+            Premi se non vedi le ultime modifiche
+          </p>
+        </div>
+        <p style={{ textAlign:"center", color:"#333", fontSize:12, marginTop:8 }}>
           🍖 Grigliata Sabato Sera · Lista condivisa
         </p>
       </div>
