@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>🍖 Grigliata Sabato Sera</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #1a0a00; font-family: Georgia, 'Times New Roman', serif; color: #f5e6c8; }
+    input::placeholder { color: #555; }
+    input:focus { outline: none; border-color: #ff6b35 !important; }
+    button:active { opacity: 0.8; }
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: #1a0a00; }
+    ::-webkit-scrollbar-thumb { background: #ff6b3566; border-radius: 3px; }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect, useCallback } = React;
+
+const STORAGE_KEY = "grigliata_sabato_v1";
+
+// Usa Firebase Realtime Database (gratuito) come backend condiviso
+// IMPORTANTE: sostituisci DB_URL con il tuo Firebase project URL se vuoi persistenza vera
+// Per ora usiamo localStorage + un semplice sync via BroadcastChannel (stesso browser)
+// Per sync multi-dispositivo reale, vedi istruzioni sotto
+
+const CATEGORIE_DEFAULT = [
+  {
+    id: "carne", emoji: "🥩", nome: "Carne", colore: "#c0392b",
+    items: [
+      { id: "s1", testo: "Salsicce", chi: "", fatto: false },
+      { id: "s2", testo: "Costine di maiale", chi: "", fatto: false },
+      { id: "s3", testo: "Pollo (ali/cosce)", chi: "", fatto: false },
+      { id: "s4", testo: "Hamburger", chi: "", fatto: false },
+    ]
+  },
+  {
+    id: "contorni", emoji: "🥗", nome: "Contorni & Antipasti", colore: "#27ae60",
+    items: [
+      { id: "c1", testo: "Pane / bruschette", chi: "", fatto: false },
+      { id: "c2", testo: "Zucchine e peperoni", chi: "", fatto: false },
+      { id: "c3", testo: "Insalata", chi: "", fatto: false },
+      { id: "c4", testo: "Affettati / formaggi", chi: "", fatto: false },
+    ]
+  },
+  {
+    id: "bevande", emoji: "🍺", nome: "Bevande", colore: "#f39c12",
+    items: [
+      { id: "b1", testo: "Birra", chi: "", fatto: false },
+      { id: "b2", testo: "Vino", chi: "", fatto: false },
+      { id: "b3", testo: "Acqua naturale e frizzante", chi: "", fatto: false },
+      { id: "b4", testo: "Bibite analcoliche", chi: "", fatto: false },
+    ]
+  },
+  {
+    id: "accessori", emoji: "🧻", nome: "Accessori", colore: "#8e44ad",
+    items: [
+      { id: "a1", testo: "Carbonella / bricchetti", chi: "", fatto: false },
+      { id: "a2", testo: "Accendifuoco", chi: "", fatto: false },
+      { id: "a3", testo: "Piatti e bicchieri di carta", chi: "", fatto: false },
+      { id: "a4", testo: "Posate usa e getta", chi: "", fatto: false },
+      { id: "a5", testo: "Sacchi spazzatura", chi: "", fatto: false },
+    ]
+  },
+  {
+    id: "dolce", emoji: "🍦", nome: "Dolce", colore: "#e91e8c",
+    items: [
+      { id: "d1", testo: "Gelato / anguria", chi: "", fatto: false },
+    ]
+  },
+];
+
+// ── BACKEND: JSONBin.io (gratuito, nessun account richiesto per read)
+// Crea un bin su jsonbin.io e incolla l'ID qui sotto
+const JSONBIN_ID = ""; // es: "665abc123def456"
+const JSONBIN_KEY = ""; // la tua API key di jsonbin.io
+
+async function remoteLoad() {
+  if (!JSONBIN_ID) return null;
+  try {
+    const r = await fetch(`https://api.jsonbin.io/v3/b/${JSONBIN_ID}/latest`, {
+      headers: { "X-Master-Key": JSONBIN_KEY }
+    });
+    const j = await r.json();
+    return j.record?.categorie || null;
+  } catch { return null; }
+}
+
+async function remoteSave(categorie) {
+  if (!JSONBIN_ID) return;
+  try {
+    await fetch(`https://api.jsonbin.io/v3/b/${JSONBIN_ID}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", "X-Master-Key": JSONBIN_KEY },
+      body: JSON.stringify({ categorie })
+    });
+  } catch {}
+}
+
+function genId() { return Math.random().toString(36).slice(2, 9); }
+
+function App() {
+  const [categorie, setCategorie] = useState(null);
+  const [nome, setNome] = useState(() => localStorage.getItem("grigliata_nome") || "");
+  const [nomeTemp, setNomeTemp] = useState("");
+  const [nomeConfermato, setNomeConfermato] = useState(() => !!localStorage.getItem("grigliata_nome"));
+  const [nuoveVoci, setNuoveVoci] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [lastSync, setLastSync] = useState(null);
+
+  useEffect(() => {
+    async function init() {
+      // Prima prova remote, poi localStorage
+      let data = await remoteLoad();
+      if (!data) {
+        const local = localStorage.getItem(STORAGE_KEY);
+        data = local ? JSON.parse(local) : CATEGORIE_DEFAULT;
+      }
+      setCategorie(data);
+      setLoading(false);
+    }
+    init();
+
+    // Polling ogni 15s per aggiornamenti da altri utenti
+    const interval = setInterval(async () => {
+      const data = await remoteLoad();
+      if (data) {
+        setCategorie(data);
+        setLastSync(new Date().toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" }));
+      }
+    }, 15000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  const salva = useCallback(async (nuove) => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(nuove));
+    await remoteSave(nuove);
+  }, []);
+
+  async function aggiornaItem(catId, itemId, campo, valore) {
+    setCategorie(prev => {
+      const nuove = prev.map(cat =>
+        cat.id !== catId ? cat : {
+          ...cat,
+          items: cat.items.map(it =>
+            it.id !== itemId ? it : { ...it, [campo]: valore }
+          )
+        }
+      );
+      salva(nuove);
+      return nuove;
+    });
+  }
+
+  async function claimaItem(catId, itemId) {
+    if (!nomeConfermato) { alert("Prima inserisci il tuo nome!"); return; }
+    const cat = categorie.find(c => c.id === catId);
+    const item = cat?.items.find(i => i.id === itemId);
+    if (!item) return;
+    const nuovoChi = item.chi === nome ? "" : nome;
+    await aggiornaItem(catId, itemId, "chi", nuovoChi);
+  }
+
+  async function toggleFatto(catId, itemId) {
+    const cat = categorie.find(c => c.id === catId);
+    const item = cat?.items.find(i => i.id === itemId);
+    if (!item) return;
+    await aggiornaItem(catId, itemId, "fatto", !item.fatto);
+  }
+
+  async function aggiungiVoce(catId) {
+    const testo = (nuoveVoci[catId] || "").trim();
+    if (!testo) return;
+    setCategorie(prev => {
+      const nuove = prev.map(cat =>
+        cat.id !== catId ? cat : {
+          ...cat,
+          items: [...cat.items, { id: genId(), testo, chi: "", fatto: false }]
+        }
+      );
+      salva(nuove);
+      return nuove;
+    });
+    setNuoveVoci(v => ({ ...v, [catId]: "" }));
+  }
+
+  async function eliminaVoce(catId, itemId) {
+    setCategorie(prev => {
+      const nuove = prev.map(cat =>
+        cat.id !== catId ? cat : { ...cat, items: cat.items.filter(i => i.id !== itemId) }
+      );
+      salva(nuove);
+      return nuove;
+    });
+  }
+
+  function confermaNome() {
+    const n = nomeTemp.trim();
+    if (!n) return;
+    setNome(n);
+    setNomeConfermato(true);
+    localStorage.setItem("grigliata_nome", n);
+  }
+
+  if (loading) return (
+    <div style={{ minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center",
+      background:"#1a0a00", color:"#fff", fontSize:20 }}>
+      🔥 Caricamento lista...
+    </div>
+  );
+
+  const tutti = categorie.flatMap(c => c.items);
+  const totale = tutti.length;
+  const coperti = tutti.filter(i => i.chi).length;
+  const fatti = tutti.filter(i => i.fatto).length;
+
+  return (
+    <div style={{ minHeight:"100vh", background:"linear-gradient(160deg,#1a0a00 0%,#2d1200 40%,#1a0a00 100%)", paddingBottom:60 }}>
+
+      {/* HEADER */}
+      <div style={{ background:"linear-gradient(135deg,#8b2500,#c0390a,#8b2500)", padding:"28px 20px 20px",
+        textAlign:"center", borderBottom:"3px solid #ff6b35", boxShadow:"0 4px 20px rgba(0,0,0,.5)" }}>
+        <div style={{ fontSize:44 }}>🍖🪵🥩</div>
+        <h1 style={{ fontSize:"clamp(20px,5vw,34px)", fontWeight:"bold", letterSpacing:2,
+          color:"#ffe0b2", textShadow:"0 2px 8px rgba(0,0,0,.5)", margin:"4px 0" }}>
+          GRIGLIATA SABATO SERA
+        </h1>
+        <p style={{ color:"#ffb87a", fontSize:14, letterSpacing:1 }}>Lista della spesa condivisa 🥩</p>
+
+        <div style={{ display:"flex", justifyContent:"center", gap:28, marginTop:16, flexWrap:"wrap" }}>
+          <Stat label="Chi porta cosa" val={`${coperti}/${totale}`} />
+          <Stat label="Già comprato" val={`${fatti}/${totale}`} />
+        </div>
+
+        <div style={{ maxWidth:300, margin:"12px auto 0", background:"rgba(0,0,0,.4)",
+          borderRadius:99, height:8, overflow:"hidden" }}>
+          <div style={{ width:`${totale ? (fatti/totale)*100 : 0}%`,
+            background:"linear-gradient(90deg,#ff6b35,#ffd54f)", height:"100%",
+            borderRadius:99, transition:"width .4s" }} />
+        </div>
+
+        {lastSync && (
+          <p style={{ color:"#555", fontSize:11, marginTop:8 }}>↻ Aggiornato alle {lastSync}</p>
+        )}
+      </div>
+
+      <div style={{ maxWidth:640, margin:"0 auto", padding:"0 14px" }}>
+
+        {/* NOME */}
+        {!nomeConfermato ? (
+          <div style={{ background:"rgba(255,107,53,.12)", border:"1px solid #ff6b35",
+            borderRadius:12, padding:"18px 20px", margin:"20px 0 10px", textAlign:"center" }}>
+            <p style={{ marginBottom:12, color:"#ffb87a", fontSize:15 }}>
+              Come ti chiami? Così gli altri sanno chi porta cosa 👇
+            </p>
+            <div style={{ display:"flex", gap:8, justifyContent:"center" }}>
+              <input value={nomeTemp} onChange={e => setNomeTemp(e.target.value)}
+                onKeyDown={e => e.key==="Enter" && confermaNome()}
+                placeholder="Il tuo nome..."
+                style={{ background:"rgba(0,0,0,.4)", border:"1px solid #ff6b35",
+                  borderRadius:8, padding:"10px 14px", color:"#f5e6c8", fontSize:15, width:180 }} />
+              <button onClick={confermaNome} style={{ background:"#ff6b35", border:"none",
+                borderRadius:8, padding:"10px 18px", color:"#fff", fontWeight:"bold",
+                cursor:"pointer", fontSize:15 }}>OK</button>
+            </div>
+          </div>
+        ) : (
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"center",
+            gap:8, margin:"16px 0 4px", color:"#ffb87a", fontSize:14 }}>
+            👤 Stai partecipando come <strong style={{ color:"#ff6b35" }}>{nome}</strong>
+            <button onClick={() => { setNomeConfermato(false); setNomeTemp(nome); }}
+              style={{ background:"none", border:"none", color:"#666",
+                cursor:"pointer", fontSize:12, textDecoration:"underline" }}>cambia</button>
+          </div>
+        )}
+
+        {nomeConfermato && (
+          <p style={{ textAlign:"center", color:"#666", fontSize:12, margin:"4px 0 16px" }}>
+            Tocca <span style={{ color:"#ff6b35" }}>✋ Mi porto io</span> per prenotare · <span style={{ color:"#4caf50" }}>✓</span> quando è comprato
+          </p>
+        )}
+
+        {/* CATEGORIE */}
+        {categorie.map(cat => (
+          <div key={cat.id} style={{ background:"rgba(255,255,255,.04)",
+            border:`1px solid ${cat.colore}44`, borderRadius:14, marginBottom:18, overflow:"hidden" }}>
+
+            <div style={{ background:`linear-gradient(90deg,${cat.colore}33,transparent)`,
+              padding:"13px 18px", borderBottom:`1px solid ${cat.colore}33`,
+              display:"flex", alignItems:"center", gap:10 }}>
+              <span style={{ fontSize:22 }}>{cat.emoji}</span>
+              <span style={{ fontWeight:"bold", fontSize:16, color:"#ffe0b2", letterSpacing:.5 }}>{cat.nome}</span>
+              <span style={{ marginLeft:"auto", fontSize:11, color:"#777" }}>
+                {cat.items.filter(i=>i.chi).length}/{cat.items.length} assegnati
+              </span>
+            </div>
+
+            <div style={{ padding:"6px 10px" }}>
+              {cat.items.map(item => (
+                <div key={item.id} style={{ display:"flex", alignItems:"center", gap:8,
+                  padding:"10px 8px", borderBottom:"1px solid rgba(255,255,255,.04)",
+                  opacity: item.fatto ? .45 : 1, transition:"opacity .2s" }}>
+
+                  <button onClick={() => toggleFatto(cat.id, item.id)} style={{
+                    width:26, height:26, borderRadius:6, flexShrink:0,
+                    border:`2px solid ${item.fatto ? "#4caf50" : "#333"}`,
+                    background: item.fatto ? "#4caf5033" : "transparent",
+                    color: item.fatto ? "#4caf50" : "transparent",
+                    cursor:"pointer", fontSize:14, display:"flex",
+                    alignItems:"center", justifyContent:"center" }}>✓</button>
+
+                  <span style={{ flex:1, fontSize:15,
+                    textDecoration: item.fatto ? "line-through" : "none",
+                    color: item.fatto ? "#555" : "#f5e6c8" }}>{item.testo}</span>
+
+                  {item.chi && item.chi !== nome && (
+                    <span style={{ fontSize:11, background:`${cat.colore}33`,
+                      border:`1px solid ${cat.colore}55`, borderRadius:20,
+                      padding:"2px 10px", color:"#ffb87a", whiteSpace:"nowrap" }}>{item.chi}</span>
+                  )}
+
+                  {nomeConfermato && (
+                    <button onClick={() => claimaItem(cat.id, item.id)}
+                      disabled={!!(item.chi && item.chi !== nome)}
+                      style={{
+                        background: item.chi===nome ? "#ff6b3533" : "transparent",
+                        border:`1px solid ${item.chi===nome ? "#ff6b35" : item.chi ? "#333" : "#ff6b3555"}`,
+                        borderRadius:20, padding:"4px 11px",
+                        color: item.chi===nome ? "#ff6b35" : item.chi ? "#444" : "#ff6b35aa",
+                        cursor: item.chi && item.chi!==nome ? "default" : "pointer",
+                        fontSize:12, whiteSpace:"nowrap" }}>
+                      {item.chi===nome ? "✋ Io" : item.chi ? `✋ ${item.chi}` : "✋ Mi porto io"}
+                    </button>
+                  )}
+
+                  <button onClick={() => eliminaVoce(cat.id, item.id)}
+                    style={{ background:"none", border:"none", color:"#333",
+                      cursor:"pointer", fontSize:18, lineHeight:1, padding:"0 2px" }}>×</button>
+                </div>
+              ))}
+
+              <div style={{ display:"flex", gap:6, padding:"10px 8px 6px" }}>
+                <input value={nuoveVoci[cat.id]||""} placeholder="Aggiungi voce..."
+                  onChange={e => setNuoveVoci(v=>({...v,[cat.id]:e.target.value}))}
+                  onKeyDown={e => e.key==="Enter" && aggiungiVoce(cat.id)}
+                  style={{ flex:1, background:"rgba(0,0,0,.3)",
+                    border:`1px solid ${cat.colore}44`, borderRadius:8,
+                    padding:"8px 12px", color:"#f5e6c8", fontSize:14 }} />
+                <button onClick={() => aggiungiVoce(cat.id)}
+                  style={{ background:`${cat.colore}44`, border:`1px solid ${cat.colore}`,
+                    borderRadius:8, padding:"8px 14px", color:"#fff",
+                    cursor:"pointer", fontSize:18 }}>+</button>
+              </div>
+            </div>
+          </div>
+        ))}
+
+        <p style={{ textAlign:"center", color:"#333", fontSize:12, marginTop:20 }}>
+          🍖 Grigliata Sabato Sera · Lista condivisa
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function Stat({ label, val }) {
+  return (
+    <div style={{ textAlign:"center" }}>
+      <div style={{ fontSize:22, fontWeight:"bold", color:"#ff6b35" }}>{val}</div>
+      <div style={{ fontSize:11, color:"#ffb87a", letterSpacing:.5 }}>{label}</div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
